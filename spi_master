@@ -1,0 +1,93 @@
+`timescale 1ns / 1ps
+
+module SPI_master (
+input master_cs,master_clk,master_cpha,master_cpol,miso,
+input [7:0]data_in,
+output [7:0]out_to_appln,
+output sclk,packet_done,
+output reg mosi,busy,
+output ss,clk_to_appln
+    );
+    
+    reg q;
+    reg[7:0]sipo_tmp;
+    reg [3:0]sel_cnt,sel_cnt1;
+    reg [1:0]divide_cnt;
+    wire dive_clk;
+    wire gated_clk,mux_cnt_clk;
+    reg packet_done_1;
+    assign clk_to_appln = mux_cnt_clk;
+    assign ss = master_cs;
+    
+    always @(posedge master_clk,posedge master_cs)
+        begin 
+            if (master_cs)
+                divide_cnt<=2'b00;
+            else 
+                divide_cnt<=divide_cnt+2'b01;     
+        end 
+        
+        assign dive_clk = divide_cnt[0];
+  always @(posedge dive_clk,posedge master_cs)
+    begin 
+        if (master_cs)
+          q<=0;
+        else 
+          begin 
+            if ( dive_clk )
+              q<=~master_cs ;
+           end 
+    end 
+    assign packet_done = packet_done_1 ;
+    assign gated_clk = dive_clk & q;
+    assign sclk = master_cpol ? ~gated_clk : gated_clk; 
+    assign mux_cnt_clk = master_cpha ^ master_cpol ? ~sclk :sclk;  
+ always @(posedge mux_cnt_clk or posedge master_cs)
+   begin 
+        if (master_cs)
+            begin
+            sel_cnt <= 4'b0000;
+            packet_done_1 <= 1'b0;
+            busy <= 1'b1;
+            end
+        else 
+           if(sel_cnt == 4'b1000)
+              begin
+               sel_cnt<=4'b0000;
+               packet_done_1 <= 1'b1;
+                end   
+              else 
+               begin
+                  sel_cnt <= sel_cnt + 4'b0001;  
+                  packet_done_1 <= 1'b0;
+                  busy <= 1'b1;
+              end
+            
+       end 
+   
+   always @(*)   // write operation  
+ 
+       begin 
+           case (sel_cnt)
+               4'b0001 :  mosi = data_in[7];
+               4'b0010 :  mosi = data_in[6];
+               4'b0011 :  mosi = data_in[5];
+               4'b0100 :  mosi = data_in[4];
+               4'b0101 :  mosi = data_in[3];
+               4'b0110 :  mosi = data_in[2];
+               4'b0111 :  mosi = data_in[1];
+               4'b1000 :  mosi = data_in[0];
+           endcase
+       
+   end    
+   
+       always @ (negedge mux_cnt_clk)   
+            begin 
+                sipo_tmp <= sipo_tmp << 1;
+                sipo_tmp[0] <= miso;
+            end 
+       assign out_to_appln = sipo_tmp;
+endmodule
+
+
+
