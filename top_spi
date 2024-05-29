@@ -1,59 +1,54 @@
 `timescale 1ns / 1ps
 
-module top_spi(
-    input clk,cs,cpol,cpha,miso,sys_rst,start,rw,
-    output ss,sclk,mosi
+module top_SPI(input clk,rst,cpha,cpol,rw,start,
+                output mosi,sclk,cs,
+                input miso,
+                input [7:0]instr_set,
+                output [6:0]display_out,
+                output AN0,AN1);
+                
+wire div_clk_app,txdone,cs_wire,cpol_w,cpha_w;
+wire [7:0]d_in;
+wire [7:0]p_out;
+wire div_freq;
+
+freqn_divider FD1( .clk(clk),
+                  .rst(rst),
+                  .divided_freq(div_freq));
+
+
+spi_master SPI1(
+                .CS_in(cs_wire) ,
+                .clk(clk) ,
+                .cpha(cpha_w),
+                .cpol(cpol_w),
+                .data_in(d_in),
+                .sclk(sclk), 
+                .mosi(mosi),
+                .TX_DONE(txdone),
+                .cs(cs),
+                .div_clk_app(div_clk_app),
+                .rst(rst),
+                .p_out(p_out),
+                .miso(miso)
     );
-
-wire [7:0]data_bus;
-wire packet_done_wire;
-wire busy_wire;
-wire [7:0]data_from_master_app;
-wire cpol_wire;
-wire cpha_wire;
-wire fd_out;
-reg [10:0] count;
-wire clk_to_master,clk_to_appln,cs_wire;    
-spi_appln inst1(.clk(fd_out),
-                .sys_rst(sys_rst),
-                .appln_cs(cs),
-                .appln_cpha(cpha),
-                .appln_cpol(cpol),
-                .rw(rw),
-                .packet_done(packet_done_wire),
-                .appln_data_out(data_bus),
-                .cpha_to_master(cpha_wire),
-                .cpol_to_master(cpol_wire),
-                .cs_to_master(cs_wire),
-                .clk_to_master(clk_to_master),
-                .busy(busy_wire),
-                .start(start),
-                .appln_clk(clk_to_appln));  
-
-SPI_master inst2(.master_cs(cs_wire),
-                 .clk_to_appln(clk_to_appln),
-                 .master_clk(clk_to_master),
-                 .miso(miso),
-                 .master_cpha(cpha_wire),
-                 .master_cpol(cpol_wire),
-                 .data_in(data_bus),
-                 .out_to_appln(data_from_master_app),
-                 .sclk(sclk),
-                 .mosi(mosi),
-                 .packet_done(packet_done_wire),
-                 .ss(ss),
-                 .busy(busy_wire)) ; 
-
-always @(posedge clk)
-    begin
-       if(sys_rst)
-           count <= 0;
-        else
-              count<=count+1;
-    end
-    assign fd_out=count[10];
-
+    
+SPI_application SPIAPP1(
+                        .clk(div_clk_app),
+                        .rst(rst),
+                        .tx_done_in(txdone),
+                        .rw(rw),
+                        .data_out(d_in),
+                        .CS_out(cs_wire),
+                        .start(start),
+                        .cpol_out(cpol_w),
+                        .cpha_out(cpha_w),
+                        .app_cpol(cpol),
+                        .app_cpha(cpha),
+                        .miso_sipo_in(p_out),
+                        .display_out(display_out),
+                        .AN0(AN0),
+                        .AN1(AN1),
+                        .instr_set(instr_set)
+);
 endmodule
-
-
-
