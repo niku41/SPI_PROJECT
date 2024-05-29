@@ -1,0 +1,17 @@
+`timescale 1ns / 1ps
+
+
+module freqn_divider(input clk,rst,
+                    output divided_freq);
+                    
+reg [24:0]count;
+ always @(posedge clk,posedge rst)
+        begin 
+            if ( rst)
+               count<=2'b00;
+            else 
+                count<=count+2'b01;     
+        end 
+        
+        assign divided_freq = count[20];
+endmodule
