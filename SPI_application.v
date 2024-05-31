@@ -1,0 +1,256 @@
+`timescale 1ns / 1ps
+//////////////////////////////////////////////////////////////////////////////////
+// Company: 
+// Engineer: 
+// 
+// Create Date: 18.05.2024 13:55:44
+// Design Name: 
+// Module Name: SPI_application
+// Project Name: 
+// Target Devices: 
+// Tool Versions: 
+// Description: 
+// 
+// Dependencies: 
+// 
+// Revision:
+// Revision 0.01 - File Created
+// Additional Comments:
+// 
+//////////////////////////////////////////////////////////////////////////////////
+
+
+
+module SPI_application(
+input clk,rst,tx_done_in,rw,start,app_cpol,app_cpha,
+output reg [7:0] data_out,
+output reg CS_out,
+output cpol_out,cpha_out,
+output  AN0,AN1,
+output reg [6:0]display_out,
+input [7:0]miso_sipo_in,
+input [7:0]instr_set
+);
+//reg [7:0]instr_set=8'h06,instr_write=8'h03,instr_read=8'h02;
+wire [3:0]d_in0,d_in1;
+wire [3:0]d_out;
+reg [7:0]addr1,addr2, addr3,data1;
+reg [2:0] count;
+reg [3:0]c_state,n_state;
+reg [3:0]sel_count;
+
+parameter IDLE=4'b0000,
+          SETUP=4'b0001,
+          WRITE=4'b0010,
+          READ=4'b0011,
+          ADDR1=4'b0100,
+          ADDR2=4'b0101,
+          ADDR3=4'b0110,
+          DATA=4'b0111,
+          STOP=4'b1000;
+
+
+assign cpol_out=app_cpol;
+assign cpha_out=app_cpha;
+//FSM
+always @( posedge rst,posedge clk )
+begin
+    if(rst)
+        c_state<=IDLE;
+    else 
+        c_state<=n_state;
+end
+
+//Next state logic
+
+always @(*)
+begin
+    case(c_state)                
+        IDLE:
+            if(start)
+                n_state<=SETUP;
+            else
+                n_state<=IDLE;
+        SETUP:
+            if(  rw==1)
+                n_state<=WRITE;
+            else if(rw==0)
+                n_state<=READ;
+          
+        WRITE:
+            if(tx_done_in)
+                 n_state<=ADDR1;
+            else
+                n_state<=WRITE;
+        READ:
+             if(tx_done_in)
+                 n_state<=ADDR1;
+             else
+                n_state<=READ;
+                
+        ADDR1:
+              
+              if( tx_done_in)
+                 n_state<=ADDR2;
+              else
+                n_state<=ADDR1;
+        ADDR2:
+              if(tx_done_in)
+                 n_state<=ADDR3;
+              else
+                n_state<=ADDR2;
+        ADDR3:
+              if(tx_done_in)
+                 n_state<=DATA;
+              else
+                n_state<=ADDR3;
+        DATA:
+              if(tx_done_in)
+                 n_state<=STOP;
+              else
+                 n_state<=DATA;
+        STOP:
+              if(rw==1)
+                 n_state<=WRITE;
+              else if(rw==0)
+                 n_state<=READ;
+              else
+                  n_state<=STOP;
+       endcase 
+end
+
+//output logic  
+
+always @ ( posedge clk )
+begin 
+    case(c_state)
+        IDLE:begin 
+                sel_count<=4'b0000;
+                if(start)begin
+                    CS_out<=0;end
+                else
+                    CS_out<=1;
+              end
+        SETUP:begin
+                sel_count<=4'b0000;
+                if(tx_done_in)
+                        CS_out<=1;
+                else if(start)
+                    begin 
+                        CS_out<=0;
+                    end
+              end
+        WRITE:
+              begin
+                sel_count<=4'b0001;
+                if(start)
+                    CS_out<=0;
+                else
+                     CS_out<=1;
+              end
+        READ:
+             begin 
+                sel_count<=4'b0010;
+                if(start)
+                    CS_out<=0;
+                else
+                     CS_out<=1;
+             end
+        ADDR1:
+              begin
+                sel_count<=4'b0011;
+                CS_out<=0;
+              end
+        
+        ADDR2:
+              begin
+                sel_count<=4'b0100;
+                CS_out<=0;
+              end
+        ADDR3:
+              begin
+                sel_count<=4'b0101;
+                CS_out<=0;
+              end
+        DATA:
+              begin 
+                    sel_count<=4'b0110;
+                    CS_out<=0;
+                    if(tx_done_in)
+                        CS_out<=1;
+              end
+       STOP:
+                    CS_out<=1;                
+    endcase 
+    
+end
+
+
+always @(posedge tx_done_in,posedge rst )
+begin 
+    if(rst)begin 
+        addr1<=0;
+        addr2<=0;
+        addr3<=0;
+        data1<=0;
+        count<=0;
+        end
+    else
+        begin
+             if(c_state==4'b0110)begin 
+                addr3<=addr3 + 1;
+                data1<=data1+1;
+                      if(addr3==8'b11111111)
+                         addr2<=addr2 + 1;
+                            if(addr2==8'b11111111)
+                                addr1<=addr1 + 1;end
+             
+        end
+end
+
+//instruction,addr,data selection
+always @(*)
+begin 
+    case(sel_count)
+        4'b0000:data_out=instr_set;
+        4'b0001:data_out=instr_set;
+        4'b0010:data_out=instr_set;
+        4'b0011:data_out=addr1;
+        4'b0100:data_out=addr2;
+        4'b0101:data_out=addr3;
+        4'b0110:data_out=data1;
+        default :data_out=instr_set;
+    endcase 
+end
+
+
+
+
+//Display Module
+assign { d_in0 , d_in1 } = miso_sipo_in;
+assign d_out=clk ? d_in0 : d_in1;
+assign AN0=clk;
+assign AN1=~clk;
+always @(*)
+begin 
+    case(d_out)
+        4'b0000:display_out=7'b0000001;
+        4'b0001:display_out=7'b1001111;
+        4'b0010:display_out=7'b0010010;
+        4'b0011:display_out=7'b0000110;
+        4'b0100:display_out=7'b1001100;
+        4'b0101:display_out=7'b0100100;
+        4'b0110:display_out=7'b0100000;
+        4'b0111:display_out=7'b0001111;
+        4'b1000:display_out=7'b0000000;
+        4'b1001:display_out=7'b0000100;
+        4'b1010:display_out=7'b0000100;
+        4'b1011:display_out=7'b1100000;
+        4'b1100:display_out=7'b0110001;
+        4'b1101:display_out=7'b1000001;
+        4'b1110:display_out=7'b0110000;
+        4'b1111:display_out=7'b0111000;
+        default:display_out= 7'b1111111; 
+    endcase 
+end
+endmodule
